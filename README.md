@@ -119,7 +119,12 @@ xdg-open callgraph.png
 ```
 
 Exemple de rendu :
-![Graphe d’appel](images/callgraph.png)
+<p align="center">
+  <img src="https://github.com/AhmedouSalem/tp1.partie1.ex3/blob/main/callgraph.png" alt="Interface Swing" width="700"/>
+</p>
+<p align="center">
+  <img src="https://github.com/AhmedouSalem/tp1.partie1.ex3/blob/main/callgraph1.png" alt="Interface Swing" width="700"/>
+</p>
 
 ---
 
