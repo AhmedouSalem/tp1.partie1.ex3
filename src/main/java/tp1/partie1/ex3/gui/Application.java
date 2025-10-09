@@ -1,9 +1,9 @@
 package tp1.partie1.ex3.gui;
 
-import tp1.partie2.ex1.parser.SourceScanner;
-import tp1.partie2.ex1.parser.CompilationUnitFactory;
-import tp1.partie2.ex1.report.ConsoleReporter;
-import tp1.partie2.ex1.service.AnalysisService;
+import tp1.partie1.ex3.service.AnalysisService;
+import tp1.partie1.ex3.parser.CompilationUnitFactory;
+import tp1.partie1.ex3.parser.SourceScanner;
+import tp1.partie1.ex3.report.ConsoleReporter;
 
 import java.io.File;
 import java.util.List;

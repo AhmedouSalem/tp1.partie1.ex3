@@ -1,4 +1,4 @@
-package tp1.partie2.ex1.report;
+package tp1.partie1.ex3.report;
 
 public class ConsoleReporter implements Reporter {
     public void info(String msg) { System.out.println(msg); }

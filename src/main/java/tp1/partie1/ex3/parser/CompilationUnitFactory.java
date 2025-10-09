@@ -1,4 +1,4 @@
-package tp1.partie2.ex1.parser;
+package tp1.partie1.ex3.parser;
 
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.dom.*;

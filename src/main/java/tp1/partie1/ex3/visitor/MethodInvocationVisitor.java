@@ -1,23 +1,34 @@
 package tp1.partie1.ex3.visitor;
 
 import org.eclipse.jdt.core.dom.*;
-import tp1.partie2.ex1.report.Reporter;
+
+import tp1.partie1.ex3.model.CallEdge;
+import tp1.partie1.ex3.model.MethodRef;
+import tp1.partie1.ex3.report.Reporter;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 public class MethodInvocationVisitor extends ASTVisitor {
-    private final CompilationUnit cu;
+	private final CompilationUnit cu;
     private final String enclosingQualifiedName;
     private final Map<String, String> locals;
     private final Set<String> seenPerMethod = new HashSet<>();
     private final Reporter reporter;
 
+    // NEW
+    private final MethodRef from;
+    private final Consumer<CallEdge> sink;
+
     public MethodInvocationVisitor(CompilationUnit cu, String enclosingQualifiedName,
-                             Map<String, String> locals, Reporter reporter) {
+                             Map<String, String> locals, Reporter reporter,
+                             MethodRef from, Consumer<CallEdge> sink) {
         this.cu = cu;
         this.enclosingQualifiedName = enclosingQualifiedName;
         this.locals = locals;
         this.reporter = reporter;
+        this.from = from;
+        this.sink = sink;
     }
 
     @Override
@@ -30,7 +41,10 @@ public class MethodInvocationVisitor extends ASTVisitor {
             ITypeBinding dc = mb.getDeclaringClass();
             if (dc != null) receiver = dc.getQualifiedName() + " (static)";
         }
+
         reporter.line("    → Appel : " + called + "    (receveur : " + simpleType(receiver) + ")");
+        // NEW: arête
+        sink.accept(new CallEdge(from, new MethodRef(clean(receiver), called)));
         return true;
     }
 
@@ -45,6 +59,8 @@ public class MethodInvocationVisitor extends ASTVisitor {
         String signature = "super::" + called + "@" + node.getStartPosition();
         if (seenPerMethod.add(signature)) {
             reporter.line("    → Appel : " + called + "    (receveur : " + simpleType(receiver) + ")");
+            // NEW: arête
+            sink.accept(new CallEdge(from, new MethodRef(clean(receiver), called)));
         }
         return true;
     }
@@ -88,5 +104,10 @@ public class MethodInvocationVisitor extends ASTVisitor {
         if (qname == null) return "inconnu";
         int idx = qname.lastIndexOf('.');
         return idx >= 0 ? qname.substring(idx + 1) : qname;
+    }
+    
+ // NEW: normaliser quelques libellés (enlève " (static)")
+    private static String clean(String t) {
+        return t == null ? "inconnu" : t.replace(" (static)", "");
     }
 }
