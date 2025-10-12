@@ -19,9 +19,9 @@ public class AnalysisService {
     private final CompilationUnitFactory cuFactory;
     private final Reporter reporter;
 
-    // NEW: stockage du graphe
+    // stockage du graphe
     private final Set<CallEdge> edges = new LinkedHashSet<>();
-    private final Set<String> projectTypes = new LinkedHashSet<>(); // NEW
+    private final Set<String> projectTypes = new LinkedHashSet<>();
 
     public AnalysisService(CompilationUnitFactory cuFactory, Reporter reporter) {
         this.cuFactory = cuFactory;
@@ -29,16 +29,16 @@ public class AnalysisService {
     }
 
     public void analyze(List<File> files) throws Exception {
-        Consumer<CallEdge> edgeSink = edges::add; // NEW: collecteur d'arêtes
-        Consumer<String> typeSink = projectTypes::add;              // NEW
+        Consumer<CallEdge> edgeSink = edges::add; // collecteur d'arêtes
+        Consumer<String> typeSink = projectTypes::add;
 
         for (File f : files) {
             String src = FileUtils.readFileToString(f, StandardCharsets.UTF_8);
             CompilationUnit cu = cuFactory.parse(src, f.getName());
-            cu.accept(new TypeDeclarationVisitor(cu, reporter, edgeSink, typeSink)); // NEW
+            cu.accept(new TypeDeclarationVisitor(cu, reporter, edgeSink, typeSink));
         }
 
-        // NEW: export du graphe
+        // export du graphe
         exportDot("target/callgraph.dot");
         exportPlantUml("target/callgraph.puml");
         reporter.info("Graphe d'appel exporté : target/callgraph.dot et target/callgraph.puml");
@@ -48,12 +48,12 @@ public class AnalysisService {
         StringBuilder sb = new StringBuilder("digraph Calls {\n");
         sb.append("  rankdir=LR;\n  node [shape=box, fontsize=11];\n");
         
-     // juste avant la boucle des arêtes, émettre les nœuds avec style
+     // émettre les nœuds avec style
         for (String t : projectTypes) {
             sb.append("  ").append("\"").append(t).append("\"")
               .append(" [style=filled, fillcolor=white];\n");
         }
-        // Optionnel : regrouper les externes rencontrés
+        // regrouper les externes rencontrés
         Set<String> externals = edges.stream()
             .map(e -> e.to().typeName())
             .filter(t -> !projectTypes.contains(t))
@@ -64,7 +64,7 @@ public class AnalysisService {
         }
         
         for (CallEdge e : edges) {
-            boolean internal = projectTypes.contains(e.to().typeName()); // cible dans le projet ?
+            boolean internal = projectTypes.contains(e.to().typeName());
             String style = internal ? "color=green, penwidth=1.6"
                                     : "color=gray50, style=dashed";
             sb.append("  ")

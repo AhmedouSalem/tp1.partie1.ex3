@@ -23,7 +23,7 @@ public class CompilationUnitFactory {
         JavaCore.setComplianceOptions(JavaCore.VERSION_17, options);
         parser.setCompilerOptions(options);
 
-        // même configuration qu’avant
+        
         parser.setEnvironment(null, new String[]{sourcePath}, null, true);
 
         return (CompilationUnit) parser.createAST(null);

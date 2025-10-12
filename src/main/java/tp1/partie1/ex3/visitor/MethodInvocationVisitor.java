@@ -16,7 +16,6 @@ public class MethodInvocationVisitor extends ASTVisitor {
     private final Set<String> seenPerMethod = new HashSet<>();
     private final Reporter reporter;
 
-    // NEW
     private final MethodRef from;
     private final Consumer<CallEdge> sink;
 
@@ -43,7 +42,7 @@ public class MethodInvocationVisitor extends ASTVisitor {
         }
 
         reporter.line("    → Appel : " + called + "    (receveur : " + simpleType(receiver) + ")");
-        // NEW: arête
+        
         sink.accept(new CallEdge(from, new MethodRef(clean(receiver), called)));
         return true;
     }
@@ -59,13 +58,13 @@ public class MethodInvocationVisitor extends ASTVisitor {
         String signature = "super::" + called + "@" + node.getStartPosition();
         if (seenPerMethod.add(signature)) {
             reporter.line("    → Appel : " + called + "    (receveur : " + simpleType(receiver) + ")");
-            // NEW: arête
+            
             sink.accept(new CallEdge(from, new MethodRef(clean(receiver), called)));
         }
         return true;
     }
 
-    // --- heuristique inchangée ---
+    // --- heuristique ---
     private String inferReceiverType(MethodInvocation node) {
         Expression exp = node.getExpression();
         if (exp == null) return enclosingQualifiedName;
@@ -91,12 +90,6 @@ public class MethodInvocationVisitor extends ASTVisitor {
             return ((ClassInstanceCreation) exp).getType().toString();
         if (exp instanceof MethodInvocation)
             return "résultat(" + ((MethodInvocation) exp).getName().getIdentifier() + "())";
-        if (exp instanceof QualifiedName) {
-            QualifiedName qn = (QualifiedName) exp;
-            String last = qn.getName().getIdentifier();
-            if (locals.containsKey(last)) return locals.get(last);
-            return qn.getFullyQualifiedName();
-        }
         return exp.toString();
     }
 
@@ -106,7 +99,6 @@ public class MethodInvocationVisitor extends ASTVisitor {
         return idx >= 0 ? qname.substring(idx + 1) : qname;
     }
     
- // NEW: normaliser quelques libellés (enlève " (static)")
     private static String clean(String t) {
         return t == null ? "inconnu" : t.replace(" (static)", "");
     }

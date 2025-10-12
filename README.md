@@ -1,165 +1,162 @@
-# 🧩 TP1 – Analyse statique et graphe d’appel (Évolution et Restructuration des Logiciels)
+# 🧩 TP1 – Partie 2 : Construction du graphe d’appel d’une application Java
 
-## 🎯 Objectif du projet
-Ce projet a été réalisé dans le cadre de l’UE **HAI913I – Évolution et Restructuration des Logiciels (Master 2 Génie Logiciel)**.  
-L’objectif est de développer une application Java capable :
-- d’analyser statiquement le code source d’un projet orienté objet ;
-- d’extraire des **métriques logicielles** (nombre de classes, méthodes, lignes de code, etc.) ;
-- et de générer le **graphe d’appel** des méthodes à partir des résultats de l’analyse.
+## 📘 Contexte
 
-Le tout est réalisé à l’aide de l’API **Eclipse JDT (Java Development Tools)** pour le parsing de code Java.
+Ce projet s’inscrit dans la continuité de l’**exercice 3 de la partie 1 du TP**,  
+où un outil d’analyse statique basé sur **Eclipse JDT** avait été développé pour extraire :
+- la liste des classes et de leurs méthodes,
+- la liste des appels effectués dans chaque méthode.
+
+L’objectif de cette seconde partie est de **construire et visualiser le graphe d’appel**  
+(_Call Graph_) d’une application Java, afin d’illustrer les relations entre les méthodes 
+et les dépendances entre classes.
+
+Chaque nœud du graphe représente une méthode (`Type::Méthode`),  
+et chaque arête orientée symbolise un appel entre deux méthodes.
 
 ---
 
-## 🏗️ Structure du projet
+## ⚙️ Outils et technologies utilisées
+
+| Outil / Librairie | Rôle |
+|--------------------|------|
+| **Eclipse JDT (Core)** | Analyse statique du code et génération de l’AST (Abstract Syntax Tree). |
+| **Apache Commons IO** | Lecture récursive des fichiers `.java`. |
+| **Graphviz** | Génération du graphe visuel à partir du fichier `.dot`. |
+| **Java Swing** | Interface graphique (`CallGraphUI`) pour sélectionner un dossier source et afficher le graphe. |
+| **Maven** | Gestion des dépendances et compilation du projet. |
+| **Ubuntu/Linux** | Environnement de test et d’exécution. |
+
+---
+
+## 🧱 Architecture du projet
+
+Le projet adopte une architecture modulaire en plusieurs packages clairement séparés :
+
 ```
-tp1.partie1.ex3/
-├── src/main/java/
-│   ├── tp1/partie1/ex3/gui/
-│   │   ├── Main.java               # Application principale (analyse + affichage)
-│   │   └── MainCallGraph.java      # Génération du graphe d’appel
-│   ├── tp1/partie1/ex3/model/      # Classes de données : ClassInfo, MethodInfo, MethodCall
-│   ├── tp1/partie1/ex3/service/    # Analyseur principal (ClassAnalysisService)
-│   ├── tp1/partie1/ex3/util/       # Scanner de fichiers sources (SourceScanner)
-│   ├── tp1/partie1/ex3/visitor/    # Visiteur AST pour méthodes et appels
-│   └── tp1/partie1/ex3/graph/      # Génération du graphe (CallGraph, Builder, DotExporter)
+tp1.partie1.ex3
 │
-├── pom.xml                         # Configuration Maven
-├── README.md                       # Ce fichier
-└── images/                         # Captures et graphes (facultatif)
+├── gui        → Interface graphique et exécution principale (Application, CallGraphUI)
+├── model      → Représentation du graphe (CallEdge, MethodRef)
+├── parser     → Lecture des fichiers et création des AST (SourceScanner, CompilationUnitFactory)
+├── report     → Gestion de la sortie (ConsoleReporter)
+├── service    → Logique d’analyse et export du graphe (AnalysisService)
+└── visitor    → Visiteurs JDT (TypeDeclarationVisitor, MethodInvocationVisitor)
+```
+
+Cette structure permet :
+- une **clarté de la responsabilité** de chaque couche,
+- une **extensibilité** pour d’autres formats d’export (JSON, UML, etc.),
+- et une **réutilisation directe** du code développé à l’exercice précédent.
+
+---
+
+## 🧩 Principe de fonctionnement
+
+### 1️⃣ Analyse du code source
+- Le parser **Eclipse JDT** construit un arbre syntaxique (AST) pour chaque fichier `.java`.
+- Le visiteur `TypeDeclarationVisitor` parcourt les classes et leurs méthodes.
+- Le visiteur `MethodInvocationVisitor` identifie les appels de méthodes (internes et externes).
+
+### 2️⃣ Construction du graphe
+- Chaque appel est transformé en arête orientée `CallEdge(from, to)`.
+- L’ensemble des arêtes est collecté par le service `AnalysisService`.
+- Le graphe est exporté au format `callgraph.dot` et `callgraph.puml`.
+
+### 3️⃣ Visualisation
+- **Graphviz** génère une image (`callgraph.png`) via la commande :
+  ```bash
+  dot -Tpng target/callgraph.dot -o target/callgraph.png
+  ```
+- Les **flèches vertes** indiquent les appels internes au projet.
+- Les **flèches grises pointillées** représentent les appels externes (JDK, bibliothèques).
+- Une interface Swing permet d’afficher et de zoomer sur le graphe.
+
+---
+
+## 🧠 Extraits de code
+
+### Création du CompilationUnit avec Eclipse JDT
+```java
+ASTParser parser = ASTParser.newParser(AST.JLS17);
+parser.setKind(ASTParser.K_COMPILATION_UNIT);
+parser.setSource(source.toCharArray());
+parser.setResolveBindings(true);
+parser.setBindingsRecovery(true);
+parser.setEnvironment(null, new String[]{SOURCE_PATH}, null, true);
+CompilationUnit cu = (CompilationUnit) parser.createAST(null);
+```
+
+### Export du graphe coloré
+```java
+boolean internal = projectTypes.contains(e.to().typeName());
+String style = internal ? "color=green, penwidth=1.6"
+                        : "color=gray50, style=dashed";
+sb.append(from).append(" -> ").append(to).append(" [")
+  .append(style).append("];\n");
 ```
 
 ---
 
-## ⚙️ Prérequis
-- **Java 17 ou supérieur** (testé avec OpenJDK 21)
-- **Maven 3.8+**
-- (Optionnel) **Graphviz** pour visualiser le graphe d’appel
+## 🖼️ Résultat
 
-### Vérifier votre environnement :
-```bash
-java -version
-mvn -version
-```
-
-### Installer Graphviz (Linux / Ubuntu)
-```bash
-sudo apt install graphviz
-```
-
----
-
-## 🚀 Installation
-
-1. **Cloner ou copier le projet**
-   ```bash
-   git clone https://github.com/votre-repo/tp1-analyse-jdt.git
-   cd tp1-analyse-jdt
-   ```
-
-2. **Compiler le projet**
-   ```bash
-   mvn clean package
-   ```
-
-3. **(Optionnel)** Ouvrir le projet dans **Eclipse** ou **IntelliJ IDEA**  
-   en important le répertoire comme un projet **Maven existant**.
-
----
-
-## 💡 Utilisation
-
-### ▶️ 1. Exécution de l’analyse statique
-
-Cette exécution parcourt un dossier source, analyse les fichiers `.java` et affiche :
-- le nombre de classes, méthodes, lignes de code ;
-- les moyennes et statistiques globales.
-
-Commande (en ligne de commande ou dans l’IDE) :
-```bash
-mvn exec:java -Dexec.mainClass="tp1.partie1.ex3.gui.Main"               -Dexec.args="/chemin/vers/ton/projet/src"
-```
-
-Exemple de sortie :
-```
-Classe : project.exemple.etude.Main
-  Méthode : main(java.lang.String[])
-    Appelle : asList   [Type receveur : java.util.Arrays]
-    Appelle : dance    [Type receveur : project.exemple.etude.Dancer]
-
-Classe : Dancer
-  Méthode : dance()
-    Appelle : println  [Type receveur : java.io.PrintStream]
-    Appelle : toString [Type receveur : java.lang.Object]
-```
-
----
-
-### 🧭 2. Génération du graphe d’appel
-
-L’exécution de `MainCallGraph` génère automatiquement :
-- un fichier **`callgraph.dot`** (format Graphviz),
-- et éventuellement un **fichier image** (si Graphviz est installé).
-
-Commande :
-```bash
-mvn exec:java -Dexec.mainClass="tp1.partie1.ex3.gui.MainCallGraph"               -Dexec.args="/chemin/vers/ton/projet/src"
-```
-
-Sortie attendue :
-```
-✅ Fichier DOT généré → /.../callgraph.dot
-   dot -Tpng callgraph.dot -o callgraph.png
-```
-
-### Visualiser le graphe
-```bash
-dot -Tpng callgraph.dot -o callgraph.png
-xdg-open callgraph.png
-```
-
-Exemple de rendu :
+### Graphe d’appel généré
 <p align="center">
-  <img src="https://github.com/AhmedouSalem/tp1.partie1.ex3/blob/main/callgraph.png" alt="Interface Swing" width="700"/>
-</p>
-<p align="center">
-  <img src="https://github.com/AhmedouSalem/tp1.partie1.ex3/blob/main/callgraph1.png" alt="Interface Swing" width="700"/>
+  <img src="https://github.com/AhmedouSalem/tp1.partie2.ex1/blob/main/%20images/viewSwing.png" alt="Interface Swing" width="700"/>
 </p>
 
----
-
-## 🧠 Principaux composants
-
-| Package / Classe | Rôle |
-|------------------|------|
-| `parser` / `visitor` | Utilisent **Eclipse JDT** pour construire et parcourir l’AST |
-| `model.ClassInfo`, `MethodInfo`, `MethodCall` | Modélisent les éléments extraits du code |
-| `service.ClassAnalysisService` | Lance l’analyse complète et agrège les résultats |
-| `graph.CallGraphBuilder` | Construit un graphe d’appel orienté à partir des appels détectés |
-| `graph.DotExporter` | Produit un fichier `.dot` compatible avec **Graphviz** |
-| `gui.Main`, `MainCallGraph` | Points d’entrée (analyse métriques / graphe d’appel) |
+**Légende :**
+- 🟢 flèches vertes → appels internes entre classes du projet  
+- ⚫ flèches grises pointillées → appels externes (bibliothèques, API standard)
 
 ---
 
-## 🧩 Exemple rapide (résumé)
+## 🪟 Interface graphique (optionnelle)
 
-**Entrée :**  
-Fichiers Java du projet `project.exemple.etude`
+Une interface Swing (`CallGraphUI`) permet de sélectionner un dossier source et d’afficher 
+le graphe d’appel sous forme d’image zoomable.
 
-**Sortie :**  
-- Résumé des métriques en console  
-- Fichier `callgraph.dot` (et `callgraph.png` si Graphviz installé)
-
----
-
-## 📚 Références
-- API officielle : [Eclipse JDT – org.eclipse.jdt.core.dom](https://help.eclipse.org/latest/topic/org.eclipse.jdt.doc.isv/reference/api/org/eclipse/jdt/core/dom/package-summary.html)
-- Outil Graphviz : [https://graphviz.org](https://graphviz.org)
-- TP : *UE HAI913I – Évolution et Restructuration des Logiciels (Université de Montpellier)*
+Lancer la classe :
+```bash
+mvn compile exec:java -Dexec.mainClass="tp1.partie1.ex3.gui.CallGraphUI"
+```
 
 ---
 
-## 👤 Auteur
+## 📁 Exemple de sortie
+
+```
+Classe : Main
+  Méthode : main
+    → Appel : asList    (receveur : Arrays (static))
+    → Appel : dance     (receveur : Dancer)
+Classe : Breakdancer
+  Méthode : dance
+    → Appel : dance     (receveur : Dancer)
+    → Appel : testThis  (receveur : Breakdancer)
+    → Appel : println   (receveur : PrintStream)
+```
+
+---
+
+## 🧩 Améliorations possibles
+
+- Export du graphe en **JSON** ou **format interactif web** (D3.js, Cytoscape.js).  
+- **Filtrage par package** ou **vue hiérarchique** des dépendances.  
+- **Détection de cycles** et calcul de métriques (centralité, fan-in/fan-out).  
+- **Intégration CI/CD** : exécution automatique après compilation Maven.
+
+---
+
+## 👨‍💻 Auteur
+
 **Ahmedou Salem**  
 Master 2 Génie Logiciel – Université de Montpellier  
-📅 Octobre 2025  
+📧 [ahmedou.salem@etu.umontpellier.fr](mailto:ahmedou.salem@etu.umontpellier.fr)  
+🔗 [LinkedIn](https://www.linkedin.com/in/salem-ahmedou-ba5500244/) · [GitHub](https://github.com/AhmedouSalem)
+
+---
+
+## 🧾 Licence
+Ce projet est fourni à des fins pédagogiques (TP Génie Logiciel, 2025).  
+Licence : **MIT** – libre d’utilisation et de modification à des fins d’apprentissage.

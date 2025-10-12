@@ -12,22 +12,22 @@ import java.util.function.Consumer;
 public class TypeDeclarationVisitor extends ASTVisitor {
 	private final CompilationUnit cu;
 	private final Reporter reporter;
-	private final Consumer<CallEdge> sink; // NEW
-	private final Consumer<String> typeSink; // NEW
+	private final Consumer<CallEdge> sink; 
+	private final Consumer<String> typeSink; 
 
 	public TypeDeclarationVisitor(CompilationUnit cu, Reporter reporter, Consumer<CallEdge> sink,
 			Consumer<String> typeSink) {
 		this.cu = cu;
 		this.reporter = reporter;
 		this.sink = sink;
-		this.typeSink = typeSink; // NEW
+		this.typeSink = typeSink;
 	}
 
 	@Override
 	public boolean visit(TypeDeclaration node) {
 		ITypeBinding tb = node.resolveBinding();
 		String classQualifiedName = tb != null ? tb.getQualifiedName() : node.getName().getIdentifier();
-		if (typeSink != null) typeSink.accept(classQualifiedName); // NEW
+		if (typeSink != null) typeSink.accept(classQualifiedName);
 		String simple = classQualifiedName.substring(classQualifiedName.lastIndexOf('.') + 1);
 		reporter.line("Classe : " + simple);
 
@@ -64,7 +64,7 @@ public class TypeDeclarationVisitor extends ASTVisitor {
 				}
 			});
 
-			// NEW: passe le "from" courant et le sink au MethodCallVisitor
+			// passe le "from" courant et le sink au MethodInvocationVisitor
 			MethodRef from = new MethodRef(classQualifiedName, methodName);
 			m.accept(new MethodInvocationVisitor(cu, classQualifiedName, localTypes, reporter, from, sink));
 		}
