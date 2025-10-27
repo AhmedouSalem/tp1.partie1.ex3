@@ -97,4 +97,8 @@ public class AnalysisService {
         // identifiants DOT sûrs
         return "\"" + m.typeName().replace('"','\'') + "::" + m.methodName().replace('"','\'') + "\"";
     }
+    
+    public java.util.Set<tp1.partie1.ex3.model.CallEdge> getCallEdges() { return java.util.Set.copyOf(edges); }
+    public java.util.Set<String> getProjectTypes() { return java.util.Set.copyOf(projectTypes); }
+
 }
