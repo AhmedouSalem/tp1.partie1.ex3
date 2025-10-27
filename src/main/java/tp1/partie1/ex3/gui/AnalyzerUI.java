@@ -1,12 +1,11 @@
 package tp1.partie1.ex3.gui;
 
+import tp1.partie1.ex3.model.CouplingEdge;
+import tp1.partie1.ex3.model.Dendrogram;
 import tp1.partie1.ex3.parser.CompilationUnitFactory;
 import tp1.partie1.ex3.parser.SourceScanner;
-import tp1.partie1.ex3.report.ConsoleReporter;
-import tp1.partie1.ex3.report.CouplingDotExporter;
-import tp1.partie1.ex3.service.AnalysisService;
-import tp1.partie1.ex3.service.CouplingAnalyzer;
-import tp1.partie1.ex3.model.CouplingEdge;
+import tp1.partie1.ex3.report.*;
+import tp1.partie1.ex3.service.*;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -21,16 +20,25 @@ import java.util.Locale;
 
 @SuppressWarnings("serial")
 public class AnalyzerUI extends JFrame {
+
     private final JTabbedPane tabs = new JTabbedPane();
-    private final ImagePanel callGraphPanel = new ImagePanel();
-    private final ImagePanel couplingGraphPanel = new ImagePanel();
+
+    // Images
+    private final ImagePanel callGraphPanel      = new ImagePanel();
+    private final ImagePanel couplingGraphPanel  = new ImagePanel();
+    private final ImagePanel dendrogramPanel     = new ImagePanel();
+    private final ImagePanel modulesGraphPanel   = new ImagePanel();
+
+    // Tables
     private final JTable couplingTable = new JTable(new DefaultTableModel(
             new Object[]{"classA", "classB", "count", "weight"}, 0));
+    private final JTable modulesTable = new JTable(new DefaultTableModel(
+            new Object[]{"module_id", "avgSimilarity", "classes"}, 0));
 
     public AnalyzerUI() {
-        super("TP – Graphe d’appel et Couplage");
+        super("TP – Call Graph, Coupling & Modules");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setSize(1200, 800);
+        setSize(1280, 860);
         setLocationRelativeTo(null);
 
         // Toolbar
@@ -39,18 +47,33 @@ public class AnalyzerUI extends JFrame {
         JButton zoomIn = new JButton("+");
         JButton zoomOut = new JButton("–");
         JButton zoomReset = new JButton("100%");
-        JComboBox<String> targetCombo = new JComboBox<>(new String[]{"Call Graph", "Coupling"});
+
+        JComboBox<String> targetCombo = new JComboBox<>(new String[]{
+                "Call Graph", "Coupling", "Dendrogram", "Modules"
+        });
+
+        // seuil CP
+        JLabel cpLbl = new JLabel("CP:");
+        JSpinner cpSpinner = new JSpinner(new SpinnerNumberModel(0.10, 0.0, 1.0, 0.01));
+        ((JSpinner.NumberEditor)cpSpinner.getEditor()).getFormat().setMinimumFractionDigits(2);
 
         JToolBar tb = new JToolBar(); tb.setFloatable(false);
         tb.add(chooseBtn); tb.add(runBtn);
-        tb.addSeparator(); tb.add(new JLabel("Zoom: "));
+        tb.addSeparator();
+        tb.add(new JLabel("Zoom: "));
         tb.add(zoomOut); tb.add(zoomReset); tb.add(zoomIn);
-        tb.addSeparator(); tb.add(new JLabel("Cible: ")); tb.add(targetCombo);
+        tb.addSeparator();
+        tb.add(new JLabel("Cible: ")); tb.add(targetCombo);
+        tb.addSeparator();
+        tb.add(cpLbl); tb.add(cpSpinner);
 
-        // Tabs
-        tabs.add("Call Graph (PNG)", wrap(callGraphPanel));
-        tabs.add("Coupling (PNG)", wrap(couplingGraphPanel));
-        tabs.add("Coupling (Table)", new JScrollPane(couplingTable));
+        // Onglets
+        tabs.add("Call Graph (PNG)",     wrap(callGraphPanel));
+        tabs.add("Coupling (PNG)",       wrap(couplingGraphPanel));
+        tabs.add("Coupling (Table)",     new JScrollPane(couplingTable));
+        tabs.add("Dendrogram (PNG)",     wrap(dendrogramPanel));
+        tabs.add("Modules (PNG)",        wrap(modulesGraphPanel));
+        tabs.add("Modules (Table)",      new JScrollPane(modulesTable));
 
         getContentPane().setLayout(new BorderLayout());
         getContentPane().add(tb, BorderLayout.NORTH);
@@ -68,17 +91,25 @@ public class AnalyzerUI extends JFrame {
             }
         });
 
-        runBtn.addActionListener(ae -> runAnalysis(selectedSrc[0]));
+        runBtn.addActionListener(ae -> runAnalysis(selectedSrc[0], ((Number)cpSpinner.getValue()).doubleValue()));
 
         zoomIn.addActionListener(ae -> getTargetPanel(targetCombo).scale(1.10));
         zoomOut.addActionListener(ae -> getTargetPanel(targetCombo).scale(1/1.10));
         zoomReset.addActionListener(ae -> getTargetPanel(targetCombo).reset());
 
+        // synchroniser “Cible” avec l'onglet actif (ergonomie)
+        tabs.addChangeListener(e -> targetCombo.setSelectedIndex(tabs.getSelectedIndex() < 3 ? tabs.getSelectedIndex() : tabs.getSelectedIndex()));
+
         setVisible(true);
     }
 
     private ImagePanel getTargetPanel(JComboBox<String> targetCombo) {
-        return targetCombo.getSelectedItem().toString().startsWith("Call") ? callGraphPanel : couplingGraphPanel;
+        switch (String.valueOf(targetCombo.getSelectedItem())) {
+            case "Call Graph":  return callGraphPanel;
+            case "Coupling":    return couplingGraphPanel;
+            case "Dendrogram":  return dendrogramPanel;
+            default:            return modulesGraphPanel;
+        }
     }
 
     private JScrollPane wrap(ImagePanel p) {
@@ -92,7 +123,7 @@ public class AnalyzerUI extends JFrame {
         return sp;
     }
 
-    private void runAnalysis(File srcDir) {
+    private void runAnalysis(File srcDir, double CP) {
         if (srcDir == null) {
             JOptionPane.showMessageDialog(this, "Veuillez choisir un dossier src/ d’abord.");
             return;
@@ -111,9 +142,13 @@ public class AnalyzerUI extends JFrame {
             var analysis = new AnalysisService(cuFactory, reporter);
             analysis.analyze(files);
 
+            // Call graph PNG
+            runDot("target/callgraph.dot", "target/callgraph.png");
+
             // 2) Couplage
             var coupling = new CouplingAnalyzer().compute(analysis.getCallEdges(), analysis.getProjectTypes());
-            // CSV
+
+            // CSV coupling
             StringBuilder csv = new StringBuilder("classA,classB,count,weight\n");
             for (CouplingEdge e : coupling) {
                 csv.append(e.classA()).append(",").append(e.classB()).append(",")
@@ -123,18 +158,32 @@ public class AnalyzerUI extends JFrame {
             Files.createDirectories(new File("target").toPath());
             Files.writeString(new File("target/coupling.csv").toPath(), csv.toString(), StandardCharsets.UTF_8);
 
-            // 3) Exports DOT -> PNG
+            // Coupling DOT -> PNG
             new CouplingDotExporter().exportUndirected(coupling, "target/coupling.dot");
             runDot("target/coupling.dot", "target/coupling.png");
 
-            runDot("target/callgraph.dot", "target/callgraph.png"); // callgraph généré par AnalysisService
+            // 3) Clustering & Modules
+            var matrix = new CouplingMatrix(analysis.getProjectTypes(), coupling);
+            Dendrogram dendro = new HierarchicalClustering().fit(matrix);
+
+            new DendrogramDotExporter().export(dendro, "target/dendrogram.dot");
+            runDot("target/dendrogram.dot", "target/dendrogram.png");
+
+            var modules = new ModuleExtractor().extract(dendro, matrix, CP);
+            new ModulesCsvExporter().export(modules, "target/modules.csv");
+            new ModulesDotExporter().export(modules, "target/modules.dot");
+            runDot("target/modules.dot", "target/modules.png");
 
             // 4) Affichage
             callGraphPanel.setImage(new File("target/callgraph.png"));
             couplingGraphPanel.setImage(new File("target/coupling.png"));
-            loadCsvIntoTable(new File("target/coupling.csv"));
+            dendrogramPanel.setImage(new File("target/dendrogram.png"));
+            modulesGraphPanel.setImage(new File("target/modules.png"));
 
-            JOptionPane.showMessageDialog(this, "Analyse terminée.\nPNG + CSV dans target/");
+            loadCsvIntoTable(new File("target/coupling.csv"), couplingTable);
+            loadCsvIntoTable(new File("target/modules.csv"), modulesTable);
+
+            JOptionPane.showMessageDialog(this, "Analyse terminée.\nPNG + CSV dans target/\nCP = " + String.format(Locale.US,"%.2f", CP));
 
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -147,26 +196,40 @@ public class AnalyzerUI extends JFrame {
         try {
             new ProcessBuilder("dot", "-Tpng", dot, "-o", png).inheritIO().start().waitFor();
         } catch (Exception e) {
-            // Graphviz pas installé: on laisse le PNG vide pour l’onglet
+            // Graphviz absent -> pas de PNG
         }
     }
 
-    private void loadCsvIntoTable(File csv) throws IOException {
-        DefaultTableModel m = (DefaultTableModel) couplingTable.getModel();
+    private void loadCsvIntoTable(File csv, JTable table) throws IOException {
+        DefaultTableModel m = (DefaultTableModel) table.getModel();
         m.setRowCount(0);
         try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(csv), StandardCharsets.UTF_8))) {
             String header = br.readLine(); // skip header
             for (String line; (line = br.readLine()) != null; ) {
                 if (line.isBlank()) continue;
-                String[] parts = line.split(",", -1);
+                // gère les classes entre guillemets dans modules.csv
+                String[] parts = parseCsvLine(line);
                 m.addRow(parts);
             }
         }
     }
 
+    private static String[] parseCsvLine(String line) {
+        // très simple: split sur virgules sauf si entre guillemets
+        java.util.List<String> out = new java.util.ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        boolean quoted = false;
+        for (char c: line.toCharArray()) {
+            if (c=='"') { quoted = !quoted; continue; }
+            if (c==',' && !quoted) { out.add(cur.toString()); cur.setLength(0); }
+            else cur.append(c);
+        }
+        out.add(cur.toString());
+        return out.toArray(new String[0]);
+    }
+
     // --- Panel image zoomable ---
-    @SuppressWarnings("serial")
-	static class ImagePanel extends JPanel {
+    static class ImagePanel extends JPanel {
         private Image img;
         private double scale = 1.0;
 
