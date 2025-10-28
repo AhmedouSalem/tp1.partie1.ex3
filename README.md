@@ -1,162 +1,174 @@
-# 🧩 TP1 – Partie 2 : Construction du graphe d’appel d’une application Java
+# TP2 — Exercice 2 : Identification de modules (clustering hiérarchique)
 
-## 📘 Contexte
+## 🎯 Objectif
 
-Ce projet s’inscrit dans la continuité de l’**exercice 3 de la partie 1 du TP**,  
-où un outil d’analyse statique basé sur **Eclipse JDT** avait été développé pour extraire :
-- la liste des classes et de leurs méthodes,
-- la liste des appels effectués dans chaque méthode.
-
-L’objectif de cette seconde partie est de **construire et visualiser le graphe d’appel**  
-(_Call Graph_) d’une application Java, afin d’illustrer les relations entre les méthodes 
-et les dépendances entre classes.
-
-Chaque nœud du graphe représente une méthode (`Type::Méthode`),  
-et chaque arête orientée symbolise un appel entre deux méthodes.
+L’objectif de cet exercice est d’**identifier automatiquement des modules cohérents** 
+à partir du **graphe de couplage entre classes** construit dans l’exercice précédent (TP2 — Ex. 1).  
+Chaque module regroupe des classes fortement couplées entre elles, permettant 
+de dégager une vision **architecturale** de l’application.
 
 ---
 
-## ⚙️ Outils et technologies utilisées
+## 🧠 Contexte théorique
 
-| Outil / Librairie | Rôle |
-|--------------------|------|
-| **Eclipse JDT (Core)** | Analyse statique du code et génération de l’AST (Abstract Syntax Tree). |
-| **Apache Commons IO** | Lecture récursive des fichiers `.java`. |
-| **Graphviz** | Génération du graphe visuel à partir du fichier `.dot`. |
-| **Java Swing** | Interface graphique (`CallGraphUI`) pour sélectionner un dossier source et afficher le graphe. |
-| **Maven** | Gestion des dépendances et compilation du projet. |
-| **Ubuntu/Linux** | Environnement de test et d’exécution. |
+Le regroupement de classes en modules à partir de leurs relations de couplage 
+est un **problème combinatoire** :  
+pour $M$ classes, le nombre de partitions possibles est donné par le **nombre de Bell** :
 
----
+| M | Nombre de partitions (Bell) |
+|---|-----------------------------:|
+| 5 | 52                          |
+| 10 | 115 975                    |
+| 15 | 1 382 958 545 091          |
 
-## 🧱 Architecture du projet
-
-Le projet adopte une architecture modulaire en plusieurs packages clairement séparés :
-
-```
-tp1.partie1.ex3
-│
-├── gui        → Interface graphique et exécution principale (Application, CallGraphUI)
-├── model      → Représentation du graphe (CallEdge, MethodRef)
-├── parser     → Lecture des fichiers et création des AST (SourceScanner, CompilationUnitFactory)
-├── report     → Gestion de la sortie (ConsoleReporter)
-├── service    → Logique d’analyse et export du graphe (AnalysisService)
-└── visitor    → Visiteurs JDT (TypeDeclarationVisitor, MethodInvocationVisitor)
-```
-
-Cette structure permet :
-- une **clarté de la responsabilité** de chaque couche,
-- une **extensibilité** pour d’autres formats d’export (JSON, UML, etc.),
-- et une **réutilisation directe** du code développé à l’exercice précédent.
+Une recherche exhaustive est donc impossible : le problème est **NP-difficile**.  
+Nous utilisons ici une **heuristique gloutonne hiérarchique** : un 
+**clustering agglomératif à liaison moyenne (average-link)**.
 
 ---
 
-## 🧩 Principe de fonctionnement
+## ⚙️ Principe du raisonnement
 
-### 1️⃣ Analyse du code source
-- Le parser **Eclipse JDT** construit un arbre syntaxique (AST) pour chaque fichier `.java`.
-- Le visiteur `TypeDeclarationVisitor` parcourt les classes et leurs méthodes.
-- Le visiteur `MethodInvocationVisitor` identifie les appels de méthodes (internes et externes).
-
-### 2️⃣ Construction du graphe
-- Chaque appel est transformé en arête orientée `CallEdge(from, to)`.
-- L’ensemble des arêtes est collecté par le service `AnalysisService`.
-- Le graphe est exporté au format `callgraph.dot` et `callgraph.puml`.
-
-### 3️⃣ Visualisation
-- **Graphviz** génère une image (`callgraph.png`) via la commande :
-  ```bash
-  dot -Tpng target/callgraph.dot -o target/callgraph.png
-  ```
-- Les **flèches vertes** indiquent les appels internes au projet.
-- Les **flèches grises pointillées** représentent les appels externes (JDK, bibliothèques).
-- Une interface Swing permet d’afficher et de zoomer sur le graphe.
+1. **Calculer la matrice de similarité** `S[A][B] = weight(A,B)` à partir du graphe de couplage.
+2. **Initialiser** un cluster par classe (feuille du dendrogramme).
+3. **Fusionner** à chaque itération les deux clusters les plus similaires.
+4. **Construire le dendrogramme** hiérarchique des fusions successives.
+5. **Découper le dendrogramme** selon :
+   - un **seuil de cohésion interne** `CP` (moyenne du couplage intra-module),
+   - la contrainte `≤ M/2` modules (M = nombre de classes).
 
 ---
 
-## 🧠 Extraits de code
+## 🧩 Structure logicielle du projet
 
-### Création du CompilationUnit avec Eclipse JDT
+Le projet est structuré dans le package `tp1.partie1.ex3` :
+
+| Package / Classe | Rôle principal |
+|------------------|----------------|
+| **model/** | Structures de données : `Dendrogram`, `CouplingEdge`, `ClassPair`. |
+| **service/** | Calculs principaux : `CouplingMatrix`, `HierarchicalClustering`, `ModuleExtractor`. |
+| **report/** | Exports : `DendrogramDotExporter`, `ModulesCsvExporter`, `ModulesDotExporter`. |
+| **gui/** | Interface graphique complète `AnalyzerUI`. |
+
+### 🔍 Description rapide des classes
+
+#### `CouplingMatrix`
+Construit la matrice de similarité entre classes et calcule la moyenne entre groupes (average-link).
+
+#### `HierarchicalClustering`
+Implémente le clustering agglomératif :
+
 ```java
-ASTParser parser = ASTParser.newParser(AST.JLS17);
-parser.setKind(ASTParser.K_COMPILATION_UNIT);
-parser.setSource(source.toCharArray());
-parser.setResolveBindings(true);
-parser.setBindingsRecovery(true);
-parser.setEnvironment(null, new String[]{SOURCE_PATH}, null, true);
-CompilationUnit cu = (CompilationUnit) parser.createAST(null);
+while (clusters.size() > 1) {
+    double s = M.similarity(A,B);
+    double h = 1 - s;
+    clusters.merge(A,B);
+}
 ```
 
-### Export du graphe coloré
-```java
-boolean internal = projectTypes.contains(e.to().typeName());
-String style = internal ? "color=green, penwidth=1.6"
-                        : "color=gray50, style=dashed";
-sb.append(from).append(" -> ").append(to).append(" [")
-  .append(style).append("];\n");
-```
+#### `Dendrogram`
+Représente les fusions successives (chaque nœud contient les classes fusionnées et la hauteur).
+
+#### `ModuleExtractor`
+Découpe l’arbre en modules selon :
+- le seuil `CP` (cohésion interne minimale),
+- la contrainte `≤ M/2` modules.
+
+#### `ModulesDotExporter` et `ModulesCsvExporter`
+Génèrent respectivement :
+- le graphe **DOT/PNG** coloré par module,
+- le fichier **CSV** récapitulatif :  
+  `module_id, avgSimilarity, classes`.
+
+#### `AnalyzerUI`
+Interface Swing permettant :
+- de choisir un dossier `src/`,
+- de lancer l’analyse complète (Appel → Couplage → Clustering),
+- de régler le seuil `CP`,
+- d’afficher tous les résultats via des onglets :
+  - **Call Graph (PNG)**
+  - **Coupling (PNG / Table)**
+  - **Dendrogram (PNG)**
+  - **Modules (PNG / Table)**
 
 ---
 
-## 🖼️ Résultat
+## 🚀 Exécution
 
-### Graphe d’appel généré
-<p align="center">
-  <img src="https://github.com/AhmedouSalem/tp1.partie1.ex3/blob/main/callgraph.png" alt="Interface Swing" width="700"/>
-</p>
+### ▶️ Ligne de commande
 
-**Légende :**
-- 🟢 flèches vertes → appels internes entre classes du projet  
-- ⚫ flèches grises pointillées → appels externes (bibliothèques, API standard)
-
----
-
-## 🪟 Interface graphique (optionnelle)
-
-Une interface Swing (`CallGraphUI`) permet de sélectionner un dossier source et d’afficher 
-le graphe d’appel sous forme d’image zoomable.
-
-Lancer la classe :
 ```bash
-mvn compile exec:java -Dexec.mainClass="tp1.partie1.ex3.gui.CallGraphUI"
+mvn -q -DskipTests compile exec:java   -Dexec.mainClass="tp1.partie1.ex3.gui.ClusteringApp"   -Dexec.args="/chemin/vers/src 0.10"
 ```
 
----
+### ▶️ Interface graphique
 
-## 📁 Exemple de sortie
-
-```
-Classe : Main
-  Méthode : main
-    → Appel : asList    (receveur : Arrays (static))
-    → Appel : dance     (receveur : Dancer)
-Classe : Breakdancer
-  Méthode : dance
-    → Appel : dance     (receveur : Dancer)
-    → Appel : testThis  (receveur : Breakdancer)
-    → Appel : println   (receveur : PrintStream)
+```bash
+mvn -q -DskipTests compile exec:java   -Dexec.mainClass="tp1.partie1.ex3.gui.AnalyzerUI"
 ```
 
----
-
-## 🧩 Améliorations possibles
-
-- Export du graphe en **JSON** ou **format interactif web** (D3.js, Cytoscape.js).  
-- **Filtrage par package** ou **vue hiérarchique** des dépendances.  
-- **Détection de cycles** et calcul de métriques (centralité, fan-in/fan-out).  
-- **Intégration CI/CD** : exécution automatique après compilation Maven.
+> ⚠️ Nécessite [Graphviz](https://graphviz.org/download/) pour générer les images PNG.  
+> Sous Ubuntu :  
+> ```bash
+> sudo apt-get install graphviz
+> ```
 
 ---
 
-## 👨‍💻 Auteur
+## 📦 Fichiers produits (dossier `target/`)
 
-**Ahmedou Salem**  
-Master 2 Génie Logiciel – Université de Montpellier  
-📧 [ahmedou.salem@etu.umontpellier.fr](mailto:ahmedou.salem@etu.umontpellier.fr)  
-🔗 [LinkedIn](https://www.linkedin.com/in/salem-ahmedou-ba5500244/) · [GitHub](https://github.com/AhmedouSalem)
+| Fichier | Description |
+|----------|-------------|
+| `callgraph.dot` / `.png` | Graphe d’appel entre méthodes |
+| `coupling.csv` / `.dot` / `.png` | Graphe de couplage pondéré entre classes |
+| `dendrogram.dot` / `.png` | Arbre hiérarchique des fusions |
+| `modules.csv` | Tableau des modules extraits |
+| `modules.dot` / `.png` | Graphe coloré des modules |
 
 ---
 
-## 🧾 Licence
-Ce projet est fourni à des fins pédagogiques (TP Génie Logiciel, 2025).  
-Licence : **MIT** – libre d’utilisation et de modification à des fins d’apprentissage.
+## 📊 Exemple de résultats
+
+### Graphe de couplage
+![Coupling Graph](images/coupling.png)
+
+### Dendrogramme hiérarchique
+![Dendrogram](images/dendrogram.png)
+
+### Graphe des modules colorés
+![Modules](images/modules.png)
+
+### Tableau des modules extraits (extrait du `modules.csv`)
+| module_id | avgSimilarity | classes |
+|------------|---------------|----------|
+| 1 | 0.500000 | Main Dancer Breakdancer |
+| 2 | 0.000000 | Example ElectricBoogieDancer |
+
+---
+
+## 💬 Interprétation
+
+- Les classes `Main`, `Dancer` et `Breakdancer` forment un **module fortement cohésif**  
+  (couplage moyen 0.5).
+- `Example` et `ElectricBoogieDancer` constituent un **module faiblement lié** aux autres.
+- Le découpage satisfait :
+  - $|modules| \le M/2$
+  - cohésion intra-module $\ge CP$
+  - modules = branches disjointes du dendrogramme.
+
+---
+
+## ⏱️ Complexité et discussion
+
+- Clustering agglomératif naïf : **O(M³)**  
+  (acceptable pour de petits projets académiques).
+- Découpage sous contraintes : **O(M²)**.
+- L’approche est **heuristique**, non optimale globalement,
+  mais interprétable et extensible.
+
+### 🔮 Améliorations possibles
+- Intégrer des poids dynamiques (fréquences d’exécution).
+- Utiliser des heuristiques avancées (algorithmes génétiques, Louvain, spectral clustering).
+- Exporter les modules vers un outil de visualisation interactif.
+
+---
